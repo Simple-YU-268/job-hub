@@ -40,6 +40,8 @@
         <button class="btn btn-sm" id="rfProfileMenu" title="更多操作">⋯</button>
       </div>
       <div class="rf-toolbar-actions">
+        <button class="btn btn-sm btn-primary" id="rfQuickFillBtn" title="自动识别并填充完全匹配的字段">⚡ 一键填充</button>
+        <button class="btn btn-sm" id="rfScanBtn" title="扫描表单并核对字段匹配">🔎 扫描匹配</button>
         <button class="btn btn-sm" id="rfAiBtn" title="AI 填简历">🤖 AI</button>
         <button class="btn btn-sm hidden" id="rfCompactToggle" title="切换显示模式">📋 完整</button>
         <button class="btn btn-sm" id="rfModeToggle">✏️ 编辑</button>
@@ -54,6 +56,7 @@
       <hr>
       <button class="rf-profile-menu-item" data-action="rename">✏️ 重命名当前简历</button>
       <button class="rf-profile-menu-item" data-action="duplicate">📋 复制当前简历</button>
+      <button class="rf-profile-menu-item" data-action="sync">🔄 同步字段到其他简历</button>
       <button class="rf-profile-menu-item" data-action="delete" style="color:var(--pink);">🗑 删除当前简历</button>
     </div>
 
@@ -133,6 +136,27 @@
 
     <!-- Add category button (edit mode only) -->
     <button class="btn rf-add-cat hidden" id="rfAddCatBtn">+ 添加分类</button>
+
+    <div class="rf-batch-panel hidden" id="rfBatchPanel">
+      <div class="rf-batch-header"><strong id="rfBatchTitle">匹配结果</strong><button class="btn btn-sm" id="rfBatchClose">×</button></div>
+      <div class="rf-batch-list" id="rfBatchList"></div>
+      <div class="rf-batch-actions">
+        <button class="btn btn-primary" id="rfBatchFillHigh">填充高置信度</button>
+        <button class="btn" id="rfBatchFillAll">填充全部</button>
+      </div>
+    </div>
+
+    <div class="rf-modal-overlay hidden" id="rfSyncModal">
+      <div class="rf-modal rf-sync-modal">
+        <div class="rf-modal-header"><h3>🔄 同步字段</h3><button class="btn btn-sm" id="rfSyncClose">×</button></div>
+        <div class="rf-modal-body">
+          <p class="rf-modal-desc">从当前简历复制已选择字段到目标简历；目标简历中对应位置的内容会被覆盖。</p>
+          <div class="rf-sync-section"><strong>同步到</strong><div id="rfSyncTargets"></div></div>
+          <div class="rf-sync-section"><strong>选择字段</strong><div id="rfSyncFields"></div></div>
+          <div class="opt-actions"><button class="btn btn-primary" id="rfSyncApply">确认同步</button><button class="btn" id="rfSyncCancel">取消</button></div>
+        </div>
+      </div>
+    </div>
 
     <!-- Toast -->
     <div class="toast" id="rfToast"></div>

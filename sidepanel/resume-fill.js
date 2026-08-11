@@ -6,11 +6,11 @@
 import {
   getProfiles, getActiveProfileId, getActiveProfile,
   saveActiveProfile, saveProfiles, setActiveProfileId,
-  addProfile, deleteProfile, duplicateProfile, renameProfile
+  addProfile, deleteProfile, duplicateProfile, renameProfile, syncProfileFields
 } from '../lib/storage.js';
 import { getAiConfig, isAiEnabled, callAI } from '../lib/ai-client.js';
 import { extractTextFromFile, extractTextFromClipboard } from '../lib/file-parsers.js';
-import { matchFieldsWithAI } from '../lib/field-matcher.js';
+import { matchFieldsWithAI, matchFieldsLocally } from '../lib/field-matcher.js';
 
 // ============ Module State ============
 let container, profile, profiles, isEditMode, isCompactFill, activeTabId, toastTimer;
@@ -52,16 +52,6 @@ export async function init(containerEl) {
   // Bind events
   bindEvents();
 
-  // Disable scan button if AI not configured
-  const aiConfig = await getAiConfig();
-  const scanBtn2 = el('rfScanBtn');
-  if (scanBtn2 && !isAiEnabled(aiConfig)) {
-    scanBtn2.disabled = true;
-    scanBtn2.title = '需要配置 AI API Key（设置页 → AI 配置）';
-    scanBtn2.style.opacity = '0.4';
-    scanBtn2.style.cursor = 'not-allowed';
-  }
-
   // Render
   refreshProfileSelect();
   render();
@@ -89,6 +79,53 @@ async function switchProfile(id) {
   if (!profile) return;
   await setActiveProfileId(id);
   render();
+}
+
+function openSyncModal() {
+  const modal = el('rfSyncModal');
+  const targets = el('rfSyncTargets');
+  const fields = el('rfSyncFields');
+  if (!modal || !targets || !fields) return;
+  targets.replaceChildren();
+  fields.replaceChildren();
+
+  profiles.filter(item => item.id !== profile.id).forEach(item => {
+    const option = document.createElement('label');
+    option.className = 'rf-sync-option';
+    option.innerHTML = `<input type="checkbox" name="sync-target" value="${item.id}"><span>${escapeHtml(item.name)}</span>`;
+    targets.appendChild(option);
+  });
+  if (!targets.children.length) targets.textContent = '请先创建另一份简历。';
+
+  profile.categories.forEach((category, categoryIndex) => category.fields.forEach((field, fieldIndex) => {
+    const option = document.createElement('label');
+    option.className = 'rf-sync-option';
+    option.innerHTML = `<input type="checkbox" name="sync-field" value="${categoryIndex}:${fieldIndex}" checked><span>${escapeHtml(category.name)} · ${escapeHtml(field.label)}</span>`;
+    fields.appendChild(option);
+  }));
+  modal.classList.remove('hidden');
+}
+
+function closeSyncModal() {
+  el('rfSyncModal')?.classList.add('hidden');
+}
+
+async function applySync() {
+  const targetIds = [...container.querySelectorAll('input[name="sync-target"]:checked')].map(input => input.value);
+  const fieldKeys = [...container.querySelectorAll('input[name="sync-field"]:checked')].map(input => input.value);
+  if (!targetIds.length) { showToast('请选择至少一份目标简历', 'info'); return; }
+  if (!fieldKeys.length) { showToast('请选择至少一个字段', 'info'); return; }
+  const changed = await syncProfileFields(profile.id, targetIds, fieldKeys);
+  profiles = await getProfiles();
+  profile = profiles.find(item => item.id === profile.id) || profile;
+  closeSyncModal();
+  showToast(changed ? `已同步 ${changed} 个字段` : '所选字段已是最新，无需同步', changed ? 'success' : 'info');
+}
+
+function escapeHtml(value) {
+  const node = document.createElement('span');
+  node.textContent = value || '';
+  return node.innerHTML;
 }
 
 // ============ Event Bindings ============
@@ -136,6 +173,10 @@ function bindEvents() {
           profiles = await getProfiles();
           refreshProfileSelect();
           render();
+          break;
+        }
+        case 'sync': {
+          openSyncModal();
           break;
         }
         case 'delete': {
@@ -186,9 +227,16 @@ function bindEvents() {
 
   // Batch scan
   const scanBtn = el('rfScanBtn'); if (scanBtn) scanBtn.addEventListener('click', doBatchScan);
+  const quickFillBtn = el('rfQuickFillBtn'); if (quickFillBtn) quickFillBtn.addEventListener('click', () => doBatchScan({ autoFill: true }));
   const batchClose = el('rfBatchClose'); if (batchClose) batchClose.addEventListener('click', () => el('rfBatchPanel').classList.add('hidden'));
   const batchFillHigh = el('rfBatchFillHigh'); if (batchFillHigh) batchFillHigh.addEventListener('click', () => batchFill(true));
   const batchFillAll = el('rfBatchFillAll'); if (batchFillAll) batchFillAll.addEventListener('click', () => batchFill(false));
+
+  const syncClose = el('rfSyncClose'); if (syncClose) syncClose.addEventListener('click', closeSyncModal);
+  const syncCancel = el('rfSyncCancel'); if (syncCancel) syncCancel.addEventListener('click', closeSyncModal);
+  const syncApply = el('rfSyncApply'); if (syncApply) syncApply.addEventListener('click', applySync);
+  const syncModal = el('rfSyncModal');
+  if (syncModal) syncModal.addEventListener('click', (e) => { if (e.target === syncModal) closeSyncModal(); });
 
   // File drop zone
   const fileDrop = el('rfFileDrop');
@@ -1002,13 +1050,10 @@ function showMsgBox(containerId, msg, kind) {
   el.className = 'msg ' + (kind || 'info');
 }
 
-// ============ Batch Scan & Fill (BETA — 需要 AI API Key) ============
+// ============ Batch Scan & Fill (local matching, AI optional) ============
 
-async function doBatchScan() {
+async function doBatchScan({ autoFill = false } = {}) {
   if (!activeTabId) { showToast('无法获取当前页面', 'error'); return; }
-
-  const aiConfig = await getAiConfig();
-  if (!isAiEnabled(aiConfig)) { showToast('需要配置 AI API Key（设置页 → AI 配置）', 'error'); return; }
 
   try {
     const resp = await chrome.tabs.sendMessage(activeTabId, { type: 'SCAN_FORM' });
@@ -1018,9 +1063,32 @@ async function doBatchScan() {
     profile.categories.forEach(cat => cat.fields.forEach(f => { if (f.value && f.value.trim()) allFields.push(f); }));
     if (allFields.length === 0) { showToast('简历数据为空，请先编辑或 AI 填简历', 'info'); return; }
 
-    showToast('⏳ AI 正在匹配字段...', 'info');
-    const matches = await matchFieldsWithAI(allFields, resp.elements);
-    if (matches.length === 0) { showToast('AI 未匹配到可填充的字段（Beta 功能，准确率不保证）', 'info'); return; }
+    // Exact/common-name matches work entirely on-device.  When AI is configured,
+    // let it only supplement the fields that remain unmatched.
+    let matches = matchFieldsLocally(allFields, resp.elements);
+    const matchedFields = new Set(matches.map(m => m.field));
+    const matchedElements = new Set(matches.map(m => m.element._idx));
+    const aiConfig = await getAiConfig();
+    if (isAiEnabled(aiConfig)) {
+      try {
+        const aiMatches = await matchFieldsWithAI(
+          allFields.filter(field => !matchedFields.has(field)),
+          resp.elements.filter(element => !matchedElements.has(element._idx))
+        );
+        matches = matches.concat(aiMatches.map(match => ({ ...match, source: 'ai' })));
+      } catch (error) {
+        // A configured-but-unavailable provider must not break local filling.
+        console.warn('AI field matching unavailable; using local matches only.', error);
+      }
+    }
+    if (matches.length === 0) { showToast('未找到可自动匹配的字段；可使用单字段填充或配置 AI 进行语义匹配', 'info'); return; }
+
+    if (autoFill) {
+      const safeMatches = matches.filter(match => match.confidence === 'high');
+      if (!safeMatches.length) { showToast('没有可安全一键填充的字段，请使用“扫描匹配”核对后填充', 'info'); return; }
+      await fillMatches(safeMatches);
+      return;
+    }
 
     const panel = el('rfBatchPanel'), list = el('rfBatchList'), title = el('rfBatchTitle');
     if (!panel || !list) return;
@@ -1045,6 +1113,12 @@ async function batchFill(highOnly) {
   let matches = panel._matches;
   if (highOnly) matches = matches.filter(m => m.confidence === 'high');
 
+  await fillMatches(matches);
+  panel.classList.add('hidden');
+  panel._matches = null;
+}
+
+async function fillMatches(matches) {
   const items = matches.map(m => ({ _idx: m.element._idx, id: m.element.id, name: m.element.name, placeholder: m.element.placeholder, value: m.field.value }));
   try {
     const resp = await chrome.tabs.sendMessage(activeTabId, { type: 'BATCH_FILL', items });
@@ -1053,7 +1127,5 @@ async function batchFill(highOnly) {
       showToast('✅ 已填入 ' + ok + ' 项' + (fail > 0 ? '，' + fail + ' 项失败' : ''), fail > 0 ? 'info' : 'success');
     }
   } catch (err) { showToast('批量填充失败：' + err.message, 'error'); }
-  panel.classList.add('hidden');
-  panel._matches = null;
 }
 

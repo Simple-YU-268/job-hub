@@ -70,6 +70,21 @@
   border-top: var(--border);
   margin: 4px 0;
 }
+
+.rf-sync-modal { max-width: 460px; }
+.rf-sync-section { margin: 14px 0; }
+.rf-sync-section > strong { display: block; margin-bottom: 6px; font-size: 13px; }
+.rf-sync-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--black);
+  font-size: 13px;
+  cursor: pointer;
+}
+.rf-sync-option:last-child { border-bottom: none; }
+.rf-sync-option input { accent-color: var(--pink); }
 @media (min-width: 768px) {
   .rf-profile-menu {
     border: var(--border-desktop);
