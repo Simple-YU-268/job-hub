@@ -11,6 +11,15 @@ import {
 // 点击工具栏图标打开侧边栏
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
+let openedVaultName = '';
+async function ensureTargetVaultOpen(config) {
+  if (!config.vaultName || config.vaultName === openedVaultName) return;
+  await chrome.tabs.create({ url: `obsidian://open?vault=${encodeURIComponent(config.vaultName)}`, active: false });
+  openedVaultName = config.vaultName;
+  // Give Obsidian a moment to activate the selected vault before the REST write.
+  await new Promise(resolve => setTimeout(resolve, 800));
+}
+
 // ---------- 消息路由 ----------
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message.type || !message.type.startsWith('JT_')) return false;
@@ -54,6 +63,7 @@ async function saveRecord(record) {
   if (!isConfigComplete(config)) {
     return { ok: false, error: '尚未完成 Obsidian 配置，请先在设置页填写本机 API 信息' };
   }
+  await ensureTargetVaultOpen(config);
   const saved = await saveObsidianRecord(config, record);
   await appendHistory(toHistoryItem(record, { syncState: 'synced', recordId: saved.id, notePath: saved.notePath }));
   return { ok: true, recordId: saved.id };
@@ -67,6 +77,7 @@ async function saveLocal(record) {
 async function retrySync(historyId) {
   const config = await getConfig();
   if (!isConfigComplete(config)) return { ok: false, error: '尚未完成 Obsidian 配置' };
+  await ensureTargetVaultOpen(config);
   const history = await getHistory();
   const item = history.find(h => h.id === historyId);
   if (!item) return { ok: false, error: '未找到该条历史记录' };

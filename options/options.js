@@ -45,14 +45,14 @@ async function init() {
 }
 
 async function onSaveObsidian() {
-  const config = { baseUrl: $('oBaseUrl').value.trim(), apiKey: $('oApiKey').value.trim(), folder: $('oFolder').value.trim() || 'JobHub' };
+  const config = { vaultName: $('oVaultName').value.trim(), baseUrl: $('oBaseUrl').value.trim(), apiKey: $('oApiKey').value.trim(), folder: $('oFolder').value.trim() || 'JobHub' };
   if (!config.baseUrl || !config.apiKey) return showMsg('obsidianMsg', '请填写 API 地址与 API Key', 'error');
   await saveConfig(config);
   showMsg('obsidianMsg', '✓ Obsidian 配置已保存', 'success');
 }
 
 async function onTestObsidian() {
-  const config = { baseUrl: $('oBaseUrl').value.trim(), apiKey: $('oApiKey').value.trim(), folder: $('oFolder').value.trim() || 'JobHub' };
+  const config = { vaultName: $('oVaultName').value.trim(), baseUrl: $('oBaseUrl').value.trim(), apiKey: $('oApiKey').value.trim(), folder: $('oFolder').value.trim() || 'JobHub' };
   try {
     const resp = await chrome.runtime.sendMessage({ type: 'JT_TEST_CONNECTION', config });
     showMsg('obsidianMsg', resp?.ok ? '✓ 已连接 Obsidian Local REST API' : (resp?.error || '连接失败'), resp?.ok ? 'success' : 'error');
@@ -68,6 +68,7 @@ async function loadConfig() {
     $('oBaseUrl').value = config.baseUrl;
     $('oApiKey').value = config.apiKey || '';
     $('oFolder').value = config.folder || 'JobHub';
+    $('oVaultName').value = config.vaultName || 'JobHub';
     return;
   }
   $('cAppId').value = config.appId || '';
