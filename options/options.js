@@ -39,6 +39,24 @@ async function init() {
   $('btnSaveAi').addEventListener('click', onSaveAi);
   $('btnTestAi').addEventListener('click', onTestAi);
 
+  $('btnSaveObsidian').addEventListener('click', onSaveObsidian);
+  $('btnTestObsidian').addEventListener('click', onTestObsidian);
+
+}
+
+async function onSaveObsidian() {
+  const config = { baseUrl: $('oBaseUrl').value.trim(), apiKey: $('oApiKey').value.trim(), folder: $('oFolder').value.trim() || 'JobHub' };
+  if (!config.baseUrl || !config.apiKey) return showMsg('obsidianMsg', '请填写 API 地址与 API Key', 'error');
+  await saveConfig(config);
+  showMsg('obsidianMsg', '✓ Obsidian 配置已保存', 'success');
+}
+
+async function onTestObsidian() {
+  const config = { baseUrl: $('oBaseUrl').value.trim(), apiKey: $('oApiKey').value.trim(), folder: $('oFolder').value.trim() || 'JobHub' };
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: 'JT_TEST_CONNECTION', config });
+    showMsg('obsidianMsg', resp?.ok ? '✓ 已连接 Obsidian Local REST API' : (resp?.error || '连接失败'), resp?.ok ? 'success' : 'error');
+  } catch (error) { showMsg('obsidianMsg', error.message, 'error'); }
 }
 
 // ==================== Config ====================
@@ -46,6 +64,12 @@ async function init() {
 async function loadConfig() {
   const config = await getConfig();
   if (!config) return;
+  if (config.baseUrl) {
+    $('oBaseUrl').value = config.baseUrl;
+    $('oApiKey').value = config.apiKey || '';
+    $('oFolder').value = config.folder || 'JobHub';
+    return;
+  }
   $('cAppId').value = config.appId || '';
   $('cAppSecret').value = config.appSecret || '';
   $('cAppToken').value = config.appToken || '';

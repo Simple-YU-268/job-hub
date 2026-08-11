@@ -48,6 +48,16 @@
     </section>
 
 
+    <section class="card">
+      <h2>Obsidian 本机同步</h2>
+      <p class="opt-note">需要启用 Obsidian 的 Local REST API 插件。投递笔记写入指定目录，并自动更新看板。</p>
+      <label class="field"><span>本机 API 地址</span><input class="input" id="oBaseUrl" type="url" value="http://127.0.0.1:27123" autocomplete="off"></label>
+      <label class="field"><span>API Key</span><input class="input" id="oApiKey" type="password" autocomplete="off"></label>
+      <label class="field"><span>Vault 内目录</span><input class="input" id="oFolder" type="text" value="JobHub" autocomplete="off"></label>
+      <div class="opt-actions"><button class="btn btn-primary" id="btnSaveObsidian">保存 Obsidian 配置</button><button class="btn" id="btnTestObsidian">测试连接</button></div>
+      <div class="msg hidden" id="obsidianMsg"></div>
+    </section>
+
     <!-- Setup guide -->
     <details class="card opt-guide">
       <summary>📖 首次配置指南（点击展开）</summary>

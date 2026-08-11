@@ -2,14 +2,11 @@
 // JobHub — Service Worker
 // 职责：Side Panel 生命周期、JT_* 消息路由、飞书 API 调用
 // ================================================================
-import { createRecord, listFields, listRecords, clearTokenCache } from './lib/feishu-api.js';
+import { saveRecord as saveObsidianRecord, listRecords, testConnection as testObsidianConnection } from './lib/obsidian-api.js';
 import {
   getConfig, isConfigComplete, appendHistory, updateHistoryItem,
   getHistory, normalizeUrl
 } from './lib/storage.js';
-import {
-  DEFAULT_FIELD_MAP, REQUIRED_FIELDS, EXPECTED_FIELD_TYPES, FIELD_TYPE_NAMES, STORAGE_KEYS
-} from './lib/constants.js';
 
 // 点击工具栏图标打开侧边栏
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -55,11 +52,11 @@ function toHistoryItem(record, extra) {
 async function saveRecord(record) {
   const config = await getConfig();
   if (!isConfigComplete(config)) {
-    return { ok: false, error: '尚未完成飞书配置，请先在设置页填写凭证' };
+    return { ok: false, error: '尚未完成 Obsidian 配置，请先在设置页填写本机 API 信息' };
   }
-  const recordId = await createRecord(config, record);
-  await appendHistory(toHistoryItem(record, { syncState: 'synced', recordId }));
-  return { ok: true, recordId };
+  const saved = await saveObsidianRecord(config, record);
+  await appendHistory(toHistoryItem(record, { syncState: 'synced', recordId: saved.id, notePath: saved.notePath }));
+  return { ok: true, recordId: saved.id };
 }
 
 async function saveLocal(record) {
@@ -69,11 +66,11 @@ async function saveLocal(record) {
 
 async function retrySync(historyId) {
   const config = await getConfig();
-  if (!isConfigComplete(config)) return { ok: false, error: '尚未完成飞书配置' };
+  if (!isConfigComplete(config)) return { ok: false, error: '尚未完成 Obsidian 配置' };
   const history = await getHistory();
   const item = history.find(h => h.id === historyId);
   if (!item) return { ok: false, error: '未找到该条历史记录' };
-  const recordId = await createRecord(config, {
+  const saved = await saveObsidianRecord(config, {
     company: item.company,
     position: item.position,
     appliedAt: item.appliedAt,
@@ -82,12 +79,17 @@ async function retrySync(historyId) {
     status: item.statusValue,
     note: item.note
   });
-  await updateHistoryItem(historyId, { syncState: 'synced', recordId });
-  return { ok: true, recordId };
+  await updateHistoryItem(historyId, { syncState: 'synced', recordId: saved.id, notePath: saved.notePath });
+  return { ok: true, recordId: saved.id };
 }
 
 // ---------- 连接测试 ----------
 async function testConnection(rawConfig) {
+  const obsidianConfig = rawConfig || await getConfig();
+  if (!isConfigComplete(obsidianConfig)) return { ok: false, error: '请先填写 Obsidian API 地址与 API Key' };
+  const info = await testObsidianConnection(obsidianConfig);
+  return { ok: true, info };
+
   let config;
   if (rawConfig) {
     config = { ...rawConfig, fieldMap: { ...DEFAULT_FIELD_MAP, ...(rawConfig.fieldMap || {}) } };
@@ -129,7 +131,17 @@ async function testConnection(rawConfig) {
 // ---------- 从飞书拉取全量记录（看板同步用） ----------
 async function fetchRemoteRecords() {
   const config = await getConfig();
-  if (!isConfigComplete(config)) return { ok: false, error: '尚未完成飞书配置' };
+  if (!isConfigComplete(config)) return { ok: false, error: '尚未完成 Obsidian 配置' };
+
+  const obsidianRecords = await listRecords(config);
+  const obsidianHistory = obsidianRecords.map(record => ({
+    id: record.id, company: record.company || '', position: record.position || '',
+    appliedAt: record.appliedAt || Date.now(), url: record.url || '',
+    normalizedUrl: normalizeUrl(record.url || ''), linkText: record.linkText || '',
+    statusValue: record.status || '已投递', note: record.note || '',
+    syncState: 'synced', recordId: record.id, fromRemote: true
+  }));
+  return { ok: true, history: obsidianHistory, fetchedAt: Date.now() };
 
   const rawRecords = await listRecords(config);
   const m = config.fieldMap;
